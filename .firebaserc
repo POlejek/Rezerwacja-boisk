@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "your-project-id"
-  }
+    "default": "rezerwacja-boisk",
+    "rezerwacja-boisk": "rezerwacja-boisk"
+  },
+  "targets": {},
+  "etags": {}
 }
