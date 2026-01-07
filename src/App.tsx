@@ -6,6 +6,7 @@ import Dashboard from './components/admin/Dashboard';
 import SettingsManagement from './components/admin/SettingsManagement';
 import PendingBookings from './components/admin/PendingBookings';
 import AdminCalendar from './components/admin/AdminCalendar';
+import TrainerBookings from './components/admin/TrainerBookings';
 import Header from './components/common/Header';
 import Sidebar from './components/common/Sidebar';
 import PublicRequest from './components/public/PublicRequest';
@@ -49,6 +50,14 @@ export default function App() {
               element={
                 <ProtectedRoute requireAdmin>
                   <PendingBookings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/trainer-bookings"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <TrainerBookings />
                 </ProtectedRoute>
               }
             />

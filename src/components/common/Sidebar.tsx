@@ -8,6 +8,7 @@ export default function Sidebar() {
         <Link to="/admin" className="text-blue-700">Panel Admin</Link>
         <Link to="/admin/settings" className="text-blue-700">Ustawienia</Link>
         <Link to="/admin/requests" className="text-blue-700">Zapytania</Link>
+        <Link to="/admin/trainer-bookings" className="text-blue-700">Rezerwacje trenerów</Link>
         <Link to="/admin/calendar" className="text-blue-700">Kalendarz (admin)</Link>
         <Link to="/request" className="text-blue-700">Wynajem bez konta</Link>
       </nav>
