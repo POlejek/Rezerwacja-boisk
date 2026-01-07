@@ -3,8 +3,10 @@ import { useBookings } from '../../hooks/useBookings';
 import { useFields } from '../../hooks/useFields';
 import DayView from './DayView';
 import WeekView from './WeekView';
+import SlotGrid from './SlotGrid';
+import BookingForm from '../booking/BookingForm';
 
-type ViewMode = 'list' | 'day' | 'week';
+type ViewMode = 'list' | 'day' | 'week' | 'grid';
 const STATUS_OPTIONS = ['pending', 'approved', 'rejected', 'cancelled'];
 
 export default function CalendarView() {
@@ -13,6 +15,7 @@ export default function CalendarView() {
   const [view, setView] = useState<ViewMode>('week');
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string[]>(['pending', 'approved']);
+  const [showBookingForm, setShowBookingForm] = useState(false);
 
   const fieldById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -63,6 +66,12 @@ export default function CalendarView() {
           <button className={`px-3 py-1 rounded border ${view === 'week' ? 'bg-blue-600 text-white' : ''}`} onClick={() => setView('week')}>
             Tydzień
           </button>
+          <button className={`px-3 py-1 rounded border ${view === 'grid' ? 'bg-blue-600 text-white' : ''}`} onClick={() => setView('grid')}>
+            Siatka (dzień)
+          </button>
+          <button className="px-3 py-1 rounded border bg-green-600 text-white" onClick={() => setShowBookingForm((v) => !v)}>
+            {showBookingForm ? 'Zamknij formularz' : 'Nowa rezerwacja'}
+          </button>
         </div>
       </div>
 
@@ -97,6 +106,13 @@ export default function CalendarView() {
 
       {view === 'day' && <DayView date={selectedDate} bookings={filtered} fieldById={fieldById} />}
       {view === 'week' && <WeekView weekStart={weekStart || selectedDate} bookings={filtered} fieldById={fieldById} />}
+      {view === 'grid' && <SlotGrid date={selectedDate} bookings={filtered} fields={fields} />}
+
+      {showBookingForm && (
+        <div className="bg-white border rounded p-4 shadow-sm">
+          <BookingForm />
+        </div>
+      )}
     </div>
   );
 }
