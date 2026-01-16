@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
@@ -12,8 +12,21 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+console.log('🔧 Inicjalizacja Firebase...');
+console.log('🔧 Project ID:', firebaseConfig.projectId);
+console.log('🔧 Auth Domain:', firebaseConfig.authDomain);
+
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
+
+// Wyłącz offline persistence - może powodować problemy
+// enableIndexedDbPersistence(db).catch((err) => {
+//   console.warn('⚠️ Nie można włączyć offline persistence:', err);
+// });
+
+console.log('✅ Firebase zainicjalizowany');
+console.log('✅ Firestore DB App:', db.app.name);
+console.log('✅ Firestore type:', db.type);

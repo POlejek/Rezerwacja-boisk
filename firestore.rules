@@ -25,8 +25,11 @@ service cloud.firestore {
     match /users/{userId} {
       // Każdy może czytać użytkowników (nawet niezalogowani - potrzebne dla wyświetlania kalendarza)
       allow read: if true;
-      // Pozwól użytkownikowi tworzyć TYLKO swój własny dokument (rejestracja)
+      
+      // Pozwól użytkownikowi tworzyć TYLKO swój własny dokument podczas rejestracji
+      // Użytkownik musi być zalogowany i tworzyć dokument ze swoim UID
       allow create: if request.auth != null && request.auth.uid == userId;
+      
       // Tylko admin może aktualizować i usuwać użytkowników
       allow update, delete: if isAdminSafe();
     }

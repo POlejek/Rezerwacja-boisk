@@ -4,6 +4,25 @@ import * as admin from 'firebase-admin';
 admin.initializeApp();
 const db = admin.firestore();
 
+// Automatycznie twórz dokument użytkownika w Firestore po rejestracji w Authentication
+export const onUserCreated = functions.auth.user().onCreate(async (user) => {
+  console.log('🔵 Tworzę dokument Firestore dla nowego użytkownika:', user.uid);
+  
+  try {
+    await db.collection('users').doc(user.uid).set({
+      email: user.email,
+      name: user.displayName || user.email,
+      role: 'trainer',
+      active: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    
+    console.log('✅ Dokument użytkownika utworzony:', user.uid);
+  } catch (error) {
+    console.error('❌ Błąd tworzenia dokumentu użytkownika:', error);
+  }
+});
+
 export const onBookingCreated = functions.firestore
   .document('bookings/{bookingId}')
   .onCreate(async (snap, context) => {
