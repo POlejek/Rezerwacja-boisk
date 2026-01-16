@@ -1,17 +1,22 @@
 import { useMemo, useState } from 'react';
 import { useBookings } from '../../hooks/useBookings';
 import { useFields } from '../../hooks/useFields';
+import DayView from './DayView';
 import WeekView from './WeekView';
 import BookingForm from '../booking/BookingForm';
 
+type ViewMode = 'list' | 'day' | 'week';
 const STATUS_OPTIONS = ['pending', 'approved', 'rejected', 'cancelled'];
 
 export default function CalendarView() {
   const { bookings, loading } = useBookings();
   const { fields } = useFields();
+  const [view, setView] = useState<ViewMode>('week');
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string[]>(['pending', 'approved']);
   const [showBookingForm, setShowBookingForm] = useState(false);
+  const [selectedFieldId, setSelectedFieldId] = useState<string>('');
+  const [initialBooking, setInitialBooking] = useState<Partial<{ fieldId: string; date: string; startTime: string; endTime: string }>>({});
 
   const fieldById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -49,10 +54,19 @@ export default function CalendarView() {
     <div className="space-y-4">
       <div className="flex flex-col md:flex-row md:items-end gap-3">
         <div>
-          <h2 className="text-xl font-semibold">Kalendarz Tygodnia</h2>
-          <p className="text-sm text-gray-600">Wybierz datę i filtruj po statusie rezerwacji.</p>
+          <h2 className="text-xl font-semibold">Kalendarz</h2>
+          <p className="text-sm text-gray-600">Przełącz widok i filtruj po statusie.</p>
         </div>
         <div className="flex gap-2 flex-wrap md:ml-auto">
+          <button className={`px-3 py-1 rounded border ${view === 'list' ? 'bg-blue-600 text-white' : ''}`} onClick={() => setView('list')}>
+            Lista
+          </button>
+          <button className={`px-3 py-1 rounded border ${view === 'day' ? 'bg-blue-600 text-white' : ''}`} onClick={() => setView('day')}>
+            Dzień
+          </button>
+          <button className={`px-3 py-1 rounded border ${view === 'week' ? 'bg-blue-600 text-white' : ''}`} onClick={() => setView('week')}>
+            Tydzień (siatka)
+          </button>
           <button className="px-3 py-1 rounded border bg-green-600 text-white" onClick={() => setShowBookingForm((v) => !v)}>
             {showBookingForm ? 'Zamknij formularz' : 'Nowa rezerwacja'}
           </button>
@@ -64,6 +78,15 @@ export default function CalendarView() {
           <label className="block text-sm mb-1">Data odniesienia</label>
           <input type="date" className="border rounded p-2" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
         </div>
+        <div>
+          <label className="block text-sm mb-1">Boisko</label>
+          <select className="border rounded p-2" value={selectedFieldId} onChange={(e) => setSelectedFieldId(e.target.value)}>
+            <option value="">Wybierz boisko</option>
+            {fields.filter((f: any) => f.isActive !== false).map((f: any) => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </select>
+        </div>
         <div className="flex flex-wrap gap-2">
           {STATUS_OPTIONS.map((s) => (
             <label key={s} className="flex items-center gap-1 text-sm border rounded px-2 py-1">
@@ -74,11 +97,38 @@ export default function CalendarView() {
         </div>
       </div>
 
-      <WeekView weekStart={weekStart || selectedDate} bookings={filtered} fieldById={fieldById} />
+      {view === 'list' && (
+        <ul className="space-y-2">
+          {filtered
+            .slice()
+            .sort((a: any, b: any) => (a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : (a.date || '').localeCompare(b.date || '')))
+            .map((b: any) => (
+              <li key={b.id} className="p-2 bg-white rounded border">
+                <div className="font-medium">{b.trainerName || 'Trener'} — {b.date} {b.startTime}-{b.endTime}</div>
+                <div className="text-sm text-gray-600">Boisko: {fieldById[b.fieldId] || b.fieldId} • Status: {b.status}</div>
+              </li>
+            ))}
+        </ul>
+      )}
+
+      {view === 'day' && <DayView date={selectedDate} bookings={filtered} fieldById={fieldById} />}
+      {view === 'week' && (
+        <WeekView
+          weekStart={weekStart || selectedDate}
+          bookings={filtered}
+          fieldById={fieldById}
+          selectedFieldId={selectedFieldId || undefined}
+          onEmptySlotClick={({ date, startTime, endTime }) => {
+            if (!selectedFieldId) return;
+            setInitialBooking({ fieldId: selectedFieldId, date, startTime, endTime });
+            setShowBookingForm(true);
+          }}
+        />
+      )}
 
       {showBookingForm && (
         <div className="bg-white border rounded p-4 shadow-sm">
-          <BookingForm />
+          <BookingForm initial={initialBooking} />
         </div>
       )}
     </div>

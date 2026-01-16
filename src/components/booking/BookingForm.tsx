@@ -13,7 +13,11 @@ type FormState = {
   notes: string;
 };
 
-export default function BookingForm() {
+type Props = {
+  initial?: Partial<FormState>;
+};
+
+export default function BookingForm({ initial }: Props) {
   const { user } = useAuth();
   const { fields } = useFields();
   const [settings, setSettings] = useState<any>(null);
@@ -25,6 +29,18 @@ export default function BookingForm() {
   useEffect(() => {
     getGeneralSettings().then(setSettings).catch(() => setSettings(null));
   }, []);
+
+  useEffect(() => {
+    if (initial) {
+      setState((s) => ({
+        fieldId: initial.fieldId ?? s.fieldId,
+        date: initial.date ?? s.date,
+        startTime: initial.startTime ?? s.startTime,
+        endTime: initial.endTime ?? s.endTime,
+        notes: s.notes,
+      }));
+    }
+  }, [initial]);
 
   const selectedField = useMemo(() => fields.find((f: any) => f.id === state.fieldId), [fields, state.fieldId]);
   const durationMinutes = useMemo(() => {

@@ -4,43 +4,62 @@ service cloud.firestore {
     function isAuthenticated() {
       return request.auth != null;
     }
-    function isAdmin() {
-      return isAuthenticated() &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    
+    // Sprawdź czy użytkownik jest adminem BEZ odczytywania jego dokumentu (unikamy cyklicznego odczytu)
+    function isAdminSafe() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'coordinator'];
     }
+    
+    function isActiveUserSafe() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true;
+    }
+    
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
+    
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      // Każdy może czytać użytkowników (nawet niezalogowani - potrzebne dla wyświetlania kalendarza)
+      allow read: if true;
+      // Pozwól użytkownikowi tworzyć TYLKO swój własny dokument (rejestracja)
+      allow create: if request.auth != null && request.auth.uid == userId;
+      // Tylko admin może aktualizować i usuwać użytkowników
+      allow update, delete: if isAdminSafe();
     }
     match /fields/{fieldId} {
       allow read: if true; // pozwól publiczny odczyt listy boisk
-      allow write: if isAdmin();
+      allow write: if isAdminSafe();
     }
     match /bookings/{bookingId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAdmin() || isOwner(resource.data.trainerId);
-      allow delete: if isAdmin();
+      // Publiczny odczyt umożliwia wyświetlanie wolnych terminów dla niezalogowanych
+      allow read: if true;
+      // Każdy aktywny zalogowany użytkownik może tworzyć rezerwacje
+      allow create: if isActiveUserSafe();
+      // Aktualizacja: admin lub właściciel rezerwacji
+      allow update: if isActiveUserSafe() && (isAdminSafe() || request.auth.uid == resource.data.trainerId);
+      // Usuwanie: admin lub właściciel
+      allow delete: if isActiveUserSafe() && (isAdminSafe() || request.auth.uid == resource.data.trainerId);
     }
     match /notifications/{notificationId} {
       allow read: if isAuthenticated() && isOwner(resource.data.userId);
-      allow write: if isAdmin();
+      allow write: if isAdminSafe();
     }
 
     // Publiczne ustawienia — odczyt dla wszystkich
     match /settings/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdminSafe();
     }
 
     // Publiczne zapytania o wynajem — tworzenie bez logowania, zarządzanie przez admina
     match /rentalRequests/{requestId} {
-      allow read: if isAdmin();
+      allow read: if true; // Pozwól czytać wszystkim (nawet niezalogowanym)
       allow create: if true;
-      allow update, delete: if isAdmin();
+      allow update, delete: if isAdminSafe();
     }
   }
 }
