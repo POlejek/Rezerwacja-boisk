@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Users, DollarSign, CheckCircle, Clock, UserCheck, LogOut, Edit2, X, CalendarDays, ChevronLeft, ChevronRight, Settings, Trash2, Shield } from 'lucide-react';
 import { useAuthContext } from './contexts/AuthContext';
-import { login, logout, registerWithEmail, registerWithGoogle, resetPassword, loginWithGoogle } from './services/auth.service';
+import { login, logout, loginWithGoogle } from './services/auth.service';
+import UserManagement from './components/admin/UserManagement';
 import { 
   collection, 
   query, 
@@ -93,16 +94,9 @@ export default function App() {
   const [externalRequests, setExternalRequests] = useState<ExternalRequest[]>([]);
   const [defaultPricePerHour, setDefaultPricePerHour] = useState(100);
   const [activeTab, setActiveTab] = useState('calendar');
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedMonth, setSelectedMonth] = useState(new Date()); // Dla widoku miesięcznego
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
-  const [registerForm, setRegisterForm] = useState({ 
-    email: '', 
-    password: '', 
-    confirmPassword: '',
-    name: '' 
-  });
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showExternalModal, setShowExternalModal] = useState(false);
@@ -345,8 +339,24 @@ export default function App() {
     try {
       await login(loginForm.email, loginForm.password);
       setLoginForm({ email: '', password: '' });
-    } catch (error) {
-      alert('Nieprawidłowe dane logowania');
+    } catch (error: any) {
+      console.error('Błąd logowania:', error);
+      
+      if (error.message === 'ACCOUNT_NOT_FOUND') {
+        alert('Konto nie istnieje w systemie. Skontaktuj się z administratorem.');
+      } else if (error.message === 'ACCOUNT_NOT_ACTIVE') {
+        alert('Twoje konto jest nieaktywne. Skontaktuj się z administratorem, aby je aktywować.');
+      } else if (error.code === 'auth/wrong-password') {
+        alert('Nieprawidłowy email lub hasło');
+      } else if (error.code === 'auth/user-not-found') {
+        alert('Nieprawidłowy email lub hasło');
+      } else if (error.code === 'auth/invalid-email') {
+        alert('Nieprawidłowy format email');
+      } else if (error.code === 'auth/too-many-requests') {
+        alert('Zbyt wiele prób logowania. Spróbuj ponownie za chwilę.');
+      } else {
+        alert('Błąd logowania: ' + (error.message || 'Nieznany błąd'));
+      }
     }
   };
 
@@ -354,58 +364,21 @@ export default function App() {
     try {
       await loginWithGoogle();
     } catch (error: any) {
-      if (error.message === 'ACCOUNT_NEEDS_ACTIVATION') {
+      console.error('Błąd logowania przez Google:', error);
+      
+      if (error.message === 'ACCOUNT_NOT_FOUND') {
+        alert('Konto nie istnieje w systemie. Skontaktuj się z administratorem, aby utworzył Twoje konto.');
+      } else if (error.message === 'ACCOUNT_NEEDS_ACTIVATION') {
         alert('Konto utworzone! Poczekaj na aktywację przez administratora.');
       } else if (error.message === 'ACCOUNT_NOT_ACTIVE') {
         alert('Twoje konto oczekuje na aktywację przez administratora.');
       } else {
-        alert('Błąd logowania przez Google: ' + error.message);
+        alert('Błąd logowania przez Google: ' + (error.message || 'Nieznany błąd'));
       }
     }
   };
 
-  const handleRegister = async () => {
-    if (registerForm.password !== registerForm.confirmPassword) {
-      alert('Hasła nie są identyczne');
-      return;
-    }
-    if (registerForm.password.length < 6) {
-      alert('Hasło musi mieć minimum 6 znaków');
-      return;
-    }
-    if (!registerForm.name.trim()) {
-      alert('Podaj swoje imię');
-      return;
-    }
 
-    try {
-      console.log('🔵 App: Rozpoczynam rejestrację...');
-      await registerWithEmail(registerForm.email, registerForm.password, registerForm.name);
-      console.log('✅ App: Rejestracja zakończona pomyślnie');
-      alert('Konto utworzone! Poczekaj na aktywację przez administratora.');
-      setRegisterForm({ email: '', password: '', confirmPassword: '', name: '' });
-      setAuthMode('login');
-    } catch (error: any) {
-      console.error('❌ App: Błąd rejestracji:', error);
-      if (error.code === 'auth/email-already-in-use') {
-        alert('Ten adres email jest już używany');
-      } else {
-        alert('Błąd rejestracji: ' + error.message + '\n\nSprawdź konsolę przeglądarki (F12) aby zobaczyć więcej szczegółów.');
-      }
-    }
-  };
-
-  const handleGoogleRegister = async () => {
-    try {
-      console.log('🔵 App: Rozpoczynam rejestrację przez Google...');
-      await registerWithGoogle();
-      console.log('✅ App: Rejestracja przez Google zakończona');
-      alert('Konto utworzone! Poczekaj na aktywację przez administratora.');
-    } catch (error: any) {
-      console.error('❌ App: Błąd rejestracji przez Google:', error);
-      alert('Błąd rejestracji przez Google: ' + error.message + '\n\nSprawdź konsolę przeglądarki (F12) aby zobaczyć więcej szczegółów.');
-    }
-  };
 
   const handleLogout = async () => {
     await logout();
@@ -980,33 +953,8 @@ export default function App() {
             <p className="text-gray-600 mt-2">Akademia Piłkarska</p>
           </div>
 
-          {/* Przełącznik Login/Rejestracja */}
-          <div className="flex gap-2 mb-6">
-            <button
-              onClick={() => setAuthMode('login')}
-              className={`flex-1 py-2 rounded-lg font-medium transition ${
-                authMode === 'login'
-                  ? 'bg-green-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              Logowanie
-            </button>
-            <button
-              onClick={() => setAuthMode('register')}
-              className={`flex-1 py-2 rounded-lg font-medium transition ${
-                authMode === 'register'
-                  ? 'bg-green-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              Rejestracja
-            </button>
-          </div>
-          
-          {authMode === 'login' ? (
-            // Formularz logowania
-            <div className="space-y-4">
+          {/* Formularz logowania */}
+          <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Email
@@ -1063,96 +1011,12 @@ export default function App() {
                 </svg>
                 Zaloguj przez Google
               </button>
-            </div>
-          ) : (
-            // Formularz rejestracji
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Imię i nazwisko
-                </label>
-                <input
-                  type="text"
-                  value={registerForm.name}
-                  onChange={(e) => setRegisterForm({ ...registerForm, name: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="Wpisz imię i nazwisko"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={registerForm.email}
-                  onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="Wpisz email"
-                />
-              </div>
               
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Hasło (min. 6 znaków)
-                </label>
-                <input
-                  type="password"
-                  value={registerForm.password}
-                  onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="Wpisz hasło"
-                />
+              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                <p className="font-semibold mb-1">ℹ️ Nie możesz się zalogować?</p>
+                <p>Konta są tworzone przez administratorów. Skontaktuj się z administratorem swojego klubu.</p>
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Potwierdź hasło
-                </label>
-                <input
-                  type="password"
-                  value={registerForm.confirmPassword}
-                  onChange={(e) => setRegisterForm({ ...registerForm, confirmPassword: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="Potwierdź hasło"
-                />
-              </div>
-              
-              <button
-                onClick={handleRegister}
-                className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition font-medium"
-              >
-                Zarejestruj się
-              </button>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">lub</span>
-                </div>
-              </div>
-
-              <button
-                onClick={handleGoogleRegister}
-                className="w-full flex items-center justify-center gap-2 bg-white border-2 border-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-50 transition font-medium"
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                </svg>
-                Zarejestruj przez Google
-              </button>
-
-              <p className="text-xs text-gray-500 text-center mt-4">
-                Nowe konto wymaga aktywacji przez administratora
-              </p>
             </div>
-          )}
         </div>
       </div>
     );
@@ -1962,140 +1826,7 @@ export default function App() {
 
         {/* Zarządzanie użytkownikami */}
         {activeTab === 'users' && isCoordinator() && (
-          <div className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4 border-b">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="text-xl font-bold text-gray-800">Zarządzanie użytkownikami</h2>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Nowi użytkownicy są automatycznie synchronizowani przy pierwszym logowaniu
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleSyncMissingUsers}
-                    className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition font-medium flex items-center gap-2"
-                  >
-                    <UserCheck className="w-4 h-4" />
-                    Instrukcja synchronizacji
-                  </button>
-                  <div className="text-sm text-gray-600">
-                    Oczekujących: <span className="font-bold text-orange-600">{allUsers.filter(u => u.active === false).length}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {allUsers.length === 0 && (
-              <div className="p-6">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                  <h3 className="font-bold text-blue-800 mb-2">ℹ️ Brak użytkowników w systemie</h3>
-                  <p className="text-sm text-blue-700 mb-3">
-                    Jeśli widzisz użytkowników w <strong>Firebase Authentication</strong>, ale nie tutaj, oznacza to, że ich dokumenty w Firestore nie zostały jeszcze utworzone.
-                  </p>
-                  <div className="bg-white rounded p-3 mb-3">
-                    <p className="text-sm font-bold text-gray-800 mb-1">🔧 Rozwiązanie:</p>
-                    <p className="text-sm text-gray-700">
-                      Poproś użytkowników aby:
-                    </p>
-                    <ol className="text-sm text-gray-700 list-decimal ml-5 mt-1">
-                      <li>Wylogowali się z aplikacji</li>
-                      <li>Zalogowali się ponownie</li>
-                    </ol>
-                    <p className="text-sm text-gray-700 mt-2">
-                      System automatycznie utworzy ich dokumenty w Firestore i pojawią się tutaj.
-                    </p>
-                  </div>
-                  <p className="text-xs text-gray-600 italic">
-                    Przykład: użytkownik <code className="bg-gray-200 px-1 rounded">olejniczak19@gmail.com</code> powinien się wylogować i zalogować ponownie.
-                  </p>
-                </div>
-              </div>
-            )}
-            
-            <div className="p-6">
-              <div className="space-y-4">
-                {allUsers.map(user => (
-                  <div key={user.id} className={`border rounded-lg p-4 ${!user.active ? 'bg-orange-50 border-orange-200' : 'bg-white'}`}>
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-bold text-gray-800">{user.name}</h3>
-                          {!user.active && (
-                            <span className="px-2 py-1 bg-orange-500 text-white text-xs rounded-full">
-                              Oczekuje na aktywację
-                            </span>
-                          )}
-                          {user.active && (
-                            <span className="px-2 py-1 bg-green-500 text-white text-xs rounded-full">
-                              Aktywny
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-600">{user.email}</p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <p className="text-xs text-gray-500">Rola:</p>
-                          <select
-                            value={editingUserRole[user.id] || user.role}
-                            onChange={(e) => {
-                              setEditingUserRole(prev => ({
-                                ...prev,
-                                [user.id]: e.target.value
-                              }));
-                              if (user.active) {
-                                handleUpdateUserRole(user.id, e.target.value);
-                              }
-                            }}
-                            className="text-xs border rounded px-2 py-1 focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="trainer">Trener</option>
-                            <option value="coordinator">Koordynator</option>
-                            <option value="admin">Admin</option>
-                          </select>
-                          {user.createdAt && (
-                            <span className="text-xs text-gray-500">
-                              • Utworzono: {new Date(user.createdAt).toLocaleDateString('pl-PL')}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        {!user.active ? (
-                          <button
-                            onClick={() => handleActivateUser(user.id, editingUserRole[user.id])}
-                            className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition"
-                          >
-                            Aktywuj
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleDeactivateUser(user.id)}
-                            className="px-3 py-1 bg-orange-500 text-white text-sm rounded hover:bg-orange-600 transition"
-                          >
-                            Dezaktywuj
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleResetUserPassword(user.email)}
-                          className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition"
-                        >
-                          Reset hasła
-                        </button>
-                        {user.id !== currentUserData.id && (
-                          <button
-                            onClick={() => handleDeleteUser(user.id)}
-                            className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <UserManagement />
         )}
 
         {/* Zarządzanie boiskami */}

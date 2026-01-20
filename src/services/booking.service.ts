@@ -1,19 +1,59 @@
 import { collection, addDoc, updateDoc, doc, deleteDoc, Timestamp, query, where, getDocs } from 'firebase/firestore';
-import { db } from './firebase';
+import { auth, db } from './firebase';
+import { hasPermission, getUserPermissions, getUserContext } from './permissions.service';
 
 const bookingsRef = collection(db, 'bookings');
 
 export async function createBooking(data: any) {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Not authenticated');
+  }
+  
+  // Sprawdź uprawnienia
+  const permissions = await getUserPermissions(currentUser.uid);
+  if (!hasPermission(permissions, 'bookings.write')) {
+    throw new Error('No permission to create bookings');
+  }
+  
   const now = Timestamp.now();
-  return addDoc(bookingsRef, { ...data, createdAt: now, updatedAt: now, status: 'pending' });
+  return addDoc(bookingsRef, { 
+    ...data, 
+    createdAt: now, 
+    updatedAt: now, 
+    status: 'pending',
+    createdBy: currentUser.uid
+  });
 }
 
 export async function updateBooking(id: string, patch: any) {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Not authenticated');
+  }
+  
+  // Sprawdź uprawnienia
+  const permissions = await getUserPermissions(currentUser.uid);
+  if (!hasPermission(permissions, 'bookings.write')) {
+    throw new Error('No permission to update bookings');
+  }
+  
   const ref = doc(db, 'bookings', id);
   return updateDoc(ref, { ...patch, updatedAt: Timestamp.now() });
 }
 
 export async function removeBooking(id: string) {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Not authenticated');
+  }
+  
+  // Sprawdź uprawnienia
+  const permissions = await getUserPermissions(currentUser.uid);
+  if (!hasPermission(permissions, 'bookings.delete')) {
+    throw new Error('No permission to delete bookings');
+  }
+  
   const ref = doc(db, 'bookings', id);
   return deleteDoc(ref);
 }

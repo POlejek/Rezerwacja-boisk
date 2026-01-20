@@ -94,3 +94,155 @@ function addDays(date: Date, days: number) {
   d.setDate(d.getDate() + days);
   return d;
 }
+
+// Funkcja do resetu hasła przez admina
+export const adminResetUserPassword = functions.https.onCall(async (data, context) => {
+  // Sprawdź czy użytkownik jest zalogowany
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Musisz być zalogowany');
+  }
+
+  const { targetEmail, newPassword } = data;
+
+  if (!targetEmail || !newPassword) {
+    throw new functions.https.HttpsError('invalid-argument', 'Brak wymaganych parametrów');
+  }
+
+  try {
+    // Sprawdź uprawnienia admina
+    const adminDoc = await db.collection('users').doc(context.auth.uid).get();
+    const adminData = adminDoc.data();
+
+    if (!adminData || (adminData.role !== 'admin' && adminData.role !== 'superadmin')) {
+      throw new functions.https.HttpsError('permission-denied', 'Brak uprawnień');
+    }
+
+    // Znajdź użytkownika po emailu
+    const targetUser = await admin.auth().getUserByEmail(targetEmail);
+
+    // Jeśli to admin klubu, sprawdź czy użytkownik należy do tego samego klubu
+    if (adminData.role === 'admin') {
+      const targetUserDoc = await db.collection('users').doc(targetUser.uid).get();
+      const targetUserData = targetUserDoc.data();
+
+      if (!targetUserData || targetUserData.clubId !== adminData.clubId) {
+        throw new functions.https.HttpsError('permission-denied', 'Możesz resetować hasła tylko użytkownikom swojego klubu');
+      }
+    }
+
+    // Zresetuj hasło
+    await admin.auth().updateUser(targetUser.uid, {
+      password: newPassword
+    });
+
+    // Zapisz log o resecie hasła
+    await db.collection('passwordResets').add({
+      adminUid: context.auth.uid,
+      targetUid: targetUser.uid,
+      targetEmail: targetEmail,
+      timestamp: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // TODO: Wyślij email z nowym hasłem do użytkownika
+    // Możesz użyć SendGrid, nodemailer, lub Firebase Extension
+
+    return { success: true, message: 'Hasło zostało zresetowane' };
+  } catch (error: any) {
+    console.error('Błąd resetu hasła:', error);
+    
+    if (error.code === 'auth/user-not-found') {
+      throw new functions.https.HttpsError('not-found', 'Użytkownik nie znaleziony');
+    }
+    
+    throw new functions.https.HttpsError('internal', error.message || 'Błąd resetu hasła');
+  }
+});
+
+// Funkcja do tworzenia nowego użytkownika przez admina
+export const adminCreateUser = functions.https.onCall(async (data, context) => {
+  // Sprawdź czy użytkownik jest zalogowany
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Musisz być zalogowany');
+  }
+
+  const { email, name, password, role, clubId, authProvider } = data;
+
+  if (!email || !name || !role || !authProvider) {
+    throw new functions.https.HttpsError('invalid-argument', 'Brak wymaganych parametrów');
+  }
+
+  if (authProvider === 'password' && !password) {
+    throw new functions.https.HttpsError('invalid-argument', 'Hasło jest wymagane dla logowania hasłem');
+  }
+
+  try {
+    // Sprawdź uprawnienia admina
+    const adminDoc = await db.collection('users').doc(context.auth.uid).get();
+    const adminData = adminDoc.data();
+
+    if (!adminData || (adminData.role !== 'admin' && adminData.role !== 'superadmin')) {
+      throw new functions.https.HttpsError('permission-denied', 'Brak uprawnień');
+    }
+
+    // Jeśli to admin klubu, sprawdź czy tworzy użytkownika w swoim klubie
+    if (adminData.role === 'admin') {
+      if (adminData.clubId !== clubId) {
+        throw new functions.https.HttpsError('permission-denied', 'Możesz tworzyć użytkowników tylko w swoim klubie');
+      }
+      // Admin klubu nie może tworzyć innych adminów ani superadminów
+      if (role === 'admin' || role === 'superadmin') {
+        throw new functions.https.HttpsError('permission-denied', 'Brak uprawnień do tworzenia adminów');
+      }
+    }
+
+    // Superadmin może tworzyć admina, ale admin musi mieć przypisany klub
+    if (role === 'admin' && !clubId) {
+      throw new functions.https.HttpsError('invalid-argument', 'Administrator musi być przypisany do klubu');
+    }
+
+    // Utwórz użytkownika w Firebase Authentication
+    const userRecord = await admin.auth().createUser({
+      email: email,
+      password: authProvider === 'password' ? password : undefined,
+      displayName: name,
+      emailVerified: false
+    });
+
+    // Utwórz dokument w Firestore
+    await db.collection('users').doc(userRecord.uid).set({
+      email: email,
+      name: name,
+      role: role,
+      clubId: clubId || null,
+      active: true,
+      authProvider: authProvider,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdBy: context.auth.uid
+    });
+
+    // TODO: Wyślij email powitalny z danymi logowania
+
+    return { 
+      success: true, 
+      message: 'Użytkownik został utworzony',
+      uid: userRecord.uid,
+      temporaryPassword: authProvider === 'password' ? password : null
+    };
+  } catch (error: any) {
+    console.error('Błąd tworzenia użytkownika:', error);
+    
+    if (error.code === 'auth/email-already-exists') {
+      throw new functions.https.HttpsError('already-exists', 'Użytkownik z tym adresem email już istnieje');
+    }
+    
+    if (error.code === 'auth/invalid-email') {
+      throw new functions.https.HttpsError('invalid-argument', 'Nieprawidłowy adres email');
+    }
+    
+    if (error.code === 'auth/weak-password') {
+      throw new functions.https.HttpsError('invalid-argument', 'Hasło jest za słabe (min. 6 znaków)');
+    }
+    
+    throw new functions.https.HttpsError('internal', error.message || 'Błąd tworzenia użytkownika');
+  }
+});

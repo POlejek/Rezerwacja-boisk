@@ -46,26 +46,20 @@ service cloud.firestore {
     }
     
     function canRead(resource) {
-      return isActive() && (
-        hasWildcard(resource) || 
-        hasPermission(resource + '.read') || 
-        hasPermission('*.read')
-      );
+      return hasWildcard(resource) || 
+             hasPermission(resource + '.read') || 
+             hasPermission('*.read');
     }
     
     function canWrite(resource) {
-      return isActive() && (
-        hasWildcard(resource) || 
-        hasPermission(resource + '.write') || 
-        hasPermission('*.write')
-      );
+      return hasWildcard(resource) || 
+             hasPermission(resource + '.write') || 
+             hasPermission('*.write');
     }
     
     function canDelete(resource) {
-      return isActive() && (
-        hasWildcard(resource) || 
-        hasPermission(resource + '.delete')
-      );
+      return hasWildcard(resource) || 
+             hasPermission(resource + '.delete');
     }
     
     // ========================================================================
@@ -298,24 +292,9 @@ service cloud.firestore {
     // ========================================================================
     
     match /settings/{settingId} {
-      // Publiczny odczyt ustawień (dla wyświetlania cen)
-      allow read: if true;
       // Clubs.settings permission
+      allow read: if hasPermission('clubs.read');
       allow write: if hasPermission('clubs.settings');
-    }
-    
-    // ========================================================================
-    // RENTAL REQUESTS COLLECTION
-    // ========================================================================
-    
-    match /rentalRequests/{requestId} {
-      // Publiczne tworzenie i odczyt zapytań
-      allow create: if true;
-      allow read: if true;
-      
-      // Zarządzanie zapytaniami tylko dla uprawnionych
-      allow update: if canWrite('bookings') || hasPermission('bookings.approve');
-      allow delete: if canDelete('bookings');
     }
   }
 }

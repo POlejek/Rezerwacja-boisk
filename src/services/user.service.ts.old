@@ -1,0 +1,213 @@
+import { 
+  collection, 
+  doc, 
+  getDoc, 
+  getDocs, 
+  setDoc, 
+  updateDoc, 
+  query, 
+  where,
+  serverTimestamp,
+  deleteDoc
+} from 'firebase/firestore';
+import { db } from './firebase';
+import { UserProfile } from './auth.service';
+
+// Generowanie losowego hasła
+export function generateRandomPassword(length: number = 12): string {
+  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+  let password = '';
+  for (let i = 0; i < length; i++) {
+    password += charset.charAt(Math.floor(Math.random() * charset.length));
+  }
+  return password;
+}
+
+// Pobranie profilu użytkownika
+export async function getUserProfile(uid: string): Promise<UserProfile | null> {
+  const userDoc = await getDoc(doc(db, 'users', uid));
+  if (!userDoc.exists()) {
+    return null;
+  }
+  return { uid, ...userDoc.data() } as UserProfile;
+}
+
+// Pobranie wszystkich użytkowników klubu (dla admina klubu)
+export async function getUsersByClub(clubId: string): Promise<UserProfile[]> {
+  const q = query(collection(db, 'users'), where('clubId', '==', clubId));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+}
+
+// Pobranie wszystkich użytkowników (dla superadmina)
+export async function getAllUsers(): Promise<UserProfile[]> {
+  const snapshot = await getDocs(collection(db, 'users'));
+  return snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+}
+
+// Utworzenie użytkownika przez admina
+// WAŻNE: To tylko tworzy dokument w Firestore. 
+// Konto w Firebase Authentication musisz utworzyć ręcznie w konsoli Firebase!
+export async function createUserByAdmin(
+  adminUid: string,
+  email: string,
+  name: string,
+  role: 'admin' | 'trainer',
+  clubId: string,
+  authProvider: 'password' | 'google'
+): Promise<void> {
+  // Sprawdź uprawnienia admina
+  const adminProfile = await getUserProfile(adminUid);
+  if (!adminProfile) {
+    throw new Error('Admin nie znaleziony');
+  }
+  
+  if (adminProfile.role !== 'superadmin' && adminProfile.role !== 'admin') {
+    throw new Error('Brak uprawnień');
+  }
+  
+  // Jeśli to admin klubu, sprawdź czy tworzy użytkownika w swoim klubie
+  if (adminProfile.role === 'admin' && adminProfile.clubId !== clubId) {
+    throw new Error('Admin może tworzyć użytkowników tylko w swoim klubie');
+  }
+  
+  // Utwórz nowy dokument w Firestore
+  // UWAGA: UID musi być taki sam jak w Firebase Authentication!
+  // Zalecam najpierw utworzyć konto w Firebase Authentication, 
+  // a potem wywołać tę funkcję z tym samym UID
+  
+  // Dla uproszczenia - zapisujemy dane "oczekującego" użytkownika
+  // który zostanie powiązany z kontem po utworzeniu w Authentication
+  const pendingUserId = `pending_${Date.now()}_${email}`;
+  
+  const userData = {
+    email,
+    name,
+    role,
+    clubId,
+    active: true, // Aktywny od razu
+    authProvider,
+    createdAt: new Date().toISOString(),
+    createdBy: adminUid,
+    pending: true // Oznaczenie, że czeka na utworzenie konta w Authentication
+  };
+  
+  await setDoc(doc(db, 'pendingUsers', pendingUserId), userData);
+}
+
+// Aktualizacja użytkownika
+export async function updateUser(
+  adminUid: string,
+  targetUid: string,
+  updates: Partial<UserProfile>
+): Promise<void> {
+  // Sprawdź uprawnienia
+  const adminProfile = await getUserProfile(adminUid);
+  const targetProfile = await getUserProfile(targetUid);
+  
+  if (!adminProfile || !targetProfile) {
+    throw new Error('Użytkownik nie znaleziony');
+  }
+  
+  if (adminProfile.role !== 'superadmin' && adminProfile.role !== 'admin') {
+    throw new Error('Brak uprawnień');
+  }
+  
+  // Admin klubu może edytować tylko użytkowników swojego klubu
+  if (adminProfile.role === 'admin' && adminProfile.clubId !== targetProfile.clubId) {
+    throw new Error('Brak uprawnień do edycji tego użytkownika');
+  }
+  
+  // Nie pozwól adminowi klubu zmieniać roli na superadmin
+  if (adminProfile.role === 'admin' && updates.role === 'superadmin') {
+    throw new Error('Brak uprawnień do nadania roli superadmin');
+  }
+  
+  await updateDoc(doc(db, 'users', targetUid), {
+    ...updates,
+    updatedAt: serverTimestamp()
+  });
+}
+
+// Aktywacja/dezaktywacja użytkownika
+export async function toggleUserActive(
+  adminUid: string,
+  targetUid: string
+): Promise<void> {
+  const targetProfile = await getUserProfile(targetUid);
+  if (!targetProfile) {
+    throw new Error('Użytkownik nie znaleziony');
+  }
+  
+  await updateUser(adminUid, targetUid, {
+    active: !targetProfile.active
+  } as Partial<UserProfile>);
+}
+
+// Usunięcie użytkownika (soft delete - dezaktywacja)
+export async function deleteUser(
+  adminUid: string,
+  targetUid: string
+): Promise<void> {
+  await updateUser(adminUid, targetUid, {
+    active: false,
+    deletedAt: new Date().toISOString()
+  } as any);
+}
+
+// Zarządzanie klubami
+export interface Club {
+  id: string;
+  name: string;
+  address?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  active: boolean;
+  createdAt: string;
+}
+
+export async function getAllClubs(): Promise<Club[]> {
+  const snapshot = await getDocs(collection(db, 'clubs'));
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Club));
+}
+
+export async function getClub(clubId: string): Promise<Club | null> {
+  const clubDoc = await getDoc(doc(db, 'clubs', clubId));
+  if (!clubDoc.exists()) {
+    return null;
+  }
+  return { id: clubDoc.id, ...clubDoc.data() } as Club;
+}
+
+export async function createClub(
+  superadminUid: string,
+  clubData: Omit<Club, 'id' | 'createdAt'>
+): Promise<string> {
+  // Sprawdź czy to superadmin
+  const adminProfile = await getUserProfile(superadminUid);
+  if (!adminProfile || adminProfile.role !== 'superadmin') {
+    throw new Error('Tylko superadmin może tworzyć kluby');
+  }
+  
+  const clubRef = doc(collection(db, 'clubs'));
+  await setDoc(clubRef, {
+    ...clubData,
+    createdAt: new Date().toISOString()
+  });
+  
+  return clubRef.id;
+}
+
+export async function updateClub(
+  superadminUid: string,
+  clubId: string,
+  updates: Partial<Club>
+): Promise<void> {
+  // Sprawdź czy to superadmin
+  const adminProfile = await getUserProfile(superadminUid);
+  if (!adminProfile || adminProfile.role !== 'superadmin') {
+    throw new Error('Tylko superadmin może edytować kluby');
+  }
+  
+  await updateDoc(doc(db, 'clubs', clubId), updates);
+}
